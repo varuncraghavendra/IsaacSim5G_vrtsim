@@ -1,0 +1,16 @@
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+teleop_app/.venv/
+.venv/
+.run_logs/
+**/__pycache__/
+*.pyc
+*.pyo
+*.so
+*.o
+*.a
+*.d
+*.egg-info/
+*.log
+.env

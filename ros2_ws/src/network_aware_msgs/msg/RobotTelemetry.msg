@@ -1,0 +1,13 @@
+builtin_interfaces/Time stamp
+float32 x
+float32 y
+float32 yaw
+float32 speed
+float32 distance_from_origin
+float32 rtf
+float32 estimated_latency_ms
+float32 estimated_jitter_ms
+float32 packet_error_rate
+float32 snr_db
+bool los
+string broker_state

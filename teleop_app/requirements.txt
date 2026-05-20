@@ -1,0 +1,7 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+numpy>=1.24
+opencv-python>=4.8
+# rclpy is provided by the system ROS 2 install -- do NOT pip-install it.
+# cv_bridge is intentionally NOT a dependency; the app decodes images with
+# numpy + opencv directly because cv_bridge breaks on NumPy 2.x.

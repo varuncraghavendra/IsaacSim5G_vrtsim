@@ -1,0 +1,10 @@
+builtin_interfaces/Time stamp
+float32 one_way_latency_ms
+float32 round_trip_latency_ms
+float32 jitter_ms
+float32 packet_error_rate
+float32 snr_db
+float32 rtf
+bool los
+float32 path_loss_db
+string source

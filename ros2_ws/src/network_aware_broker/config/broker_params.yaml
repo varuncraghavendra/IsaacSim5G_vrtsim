@@ -1,0 +1,42 @@
+network_aware_broker:
+  ros__parameters:
+    # ---- Topic wiring --------------------------------------------------
+    teleop_topic: /network/teleop_command
+    metrics_topic: /network/metrics
+
+    # IMPORTANT: the broker publishes on /network/cmd_vel; the Isaac bridge
+    # is the only node that publishes the final Twist on /cmd_vel. Keeping
+    # these split means there is exactly one publisher on the topic Isaac
+    # subscribes to, which avoids the historical self-loop bug where the
+    # bridge re-fed its own input.
+    adaptive_cmd_topic: /network/cmd_vel
+
+    odom_topic: /odom
+    step_complete_topic: /network/step_complete
+    clock_state_topic: /network/clock_state
+    telemetry_topic: /network/robot_telemetry
+
+    # ---- Pacing --------------------------------------------------------
+    publish_rate_hz: 100.0       # how often the broker emits a Twist
+    default_rtf: 0.95
+    physics_step_ms: 20.0
+    network_step_ms: 10.0
+    release_lookahead_ms: 0.0    # 0 = release as soon as latency budget is met
+    max_command_age_ms: 500.0    # drop incoming commands older than this
+    max_queue_size: 256
+
+    # The barrier was useful for deterministic replay; for live teleop it
+    # caused intermittent stuck releases when the step-complete heartbeat
+    # was late. Off by default; turn on for deterministic replay runs.
+    use_step_complete_gate: false
+
+    # Hold the last released command for this long if no fresh command
+    # arrives, then publish zero (broker-side watchdog).
+    max_command_hold_ms: 600.0
+
+    # Forwarded to TimeBroker for completeness (only matters when the
+    # step gate is on and we want to model dropped-command grace).
+    stale_hold_last_command_ms: 100.0
+
+    log_csv_path: ""
+    deterministic_replay_enabled: false

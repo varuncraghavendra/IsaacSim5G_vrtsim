@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>IsaacSim5G Teleop</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <span class="dot" id="connDot"></span>
+      <span class="title">IsaacSim5G Teleop</span>
+      <span class="mode-pill" id="modePill">mode: —</span>
+      <span class="mode-pill" id="platformPill">platform: —</span>
+    </div>
+    <div class="stats" id="topStats">
+      <span class="stat"><label>tx</label><span id="sTx">—</span></span>
+      <span class="stat"><label>rx</label><span id="sRx">—</span></span>
+      <span class="stat"><label>panels</label><span id="sPanels">0</span></span>
+      <span class="stat"><label>cmd</label><span id="sCmdState">idle</span></span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- ====== Camera panels (dynamic) =================================== -->
+    <section class="cam-grid" id="camGrid"></section>
+
+    <!-- ====== Control + telemetry ====================================== -->
+    <section class="panel control-panel">
+      <div class="panel-head">
+        <div class="panel-title" id="ctrlTitle">Drive</div>
+        <div class="kbd-hint" id="kbdHint"></div>
+      </div>
+
+      <div class="estop-banner" id="estopBanner">E-STOP ENGAGED — release SPACE to resume</div>
+
+      <div class="pad-grid">
+        <div></div>
+        <button class="pad" id="btnW" data-key="w">▲<br>W</button>
+        <div></div>
+        <button class="pad" id="btnA" data-key="a">◀<br>A</button>
+        <button class="pad stop" id="btnStop">STOP</button>
+        <button class="pad" id="btnD" data-key="d">▶<br>D</button>
+        <div></div>
+        <button class="pad" id="btnS" data-key="s">▼<br>S</button>
+        <div></div>
+      </div>
+
+      <!-- Drone-only secondary pad -->
+      <div class="pad-grid pad-grid-2" id="dronePad">
+        <div></div>
+        <button class="pad" id="btnR" data-key="r">▲<br>R<br>up</button>
+        <div></div>
+        <button class="pad" id="btnQ" data-key="q">⟲<br>Q<br>yaw-</button>
+        <div></div>
+        <button class="pad" id="btnE" data-key="e">⟳<br>E<br>yaw+</button>
+        <div></div>
+        <button class="pad" id="btnF" data-key="f">▼<br>F<br>down</button>
+        <div></div>
+      </div>
+
+      <div class="event-row" id="droneEvents">
+        <button class="evt arm"     id="btnArm"     data-evt="arm">ARM (Z)</button>
+        <button class="evt disarm"  id="btnDisarm"  data-evt="disarm">DISARM (X)</button>
+        <button class="evt takeoff" id="btnTakeoff" data-evt="takeoff">TAKEOFF (T)</button>
+        <button class="evt land"    id="btnLand"    data-evt="land">LAND (L)</button>
+        <button class="evt off"     id="btnOffboard"data-evt="offboard">OFFBOARD</button>
+      </div>
+
+      <div class="slider-row">
+        <label>Linear speed (m/s)</label><span id="linVal">0.50</span>
+      </div>
+      <input id="linRange" type="range" min="0.05" max="1.5" step="0.05" value="0.5">
+
+      <div class="slider-row">
+        <label>Angular speed (rad/s)</label><span id="angVal">0.80</span>
+      </div>
+      <input id="angRange" type="range" min="0.1" max="2.5" step="0.05" value="0.8">
+
+      <div class="slider-row drone-only">
+        <label>Vertical speed (m/s)</label><span id="vertVal">0.50</span>
+      </div>
+      <input id="vertRange" class="drone-only" type="range" min="0.05" max="1.5" step="0.05" value="0.5">
+
+      <div class="slider-row">
+        <label>Send rate (Hz)</label><span id="rateVal">30</span>
+      </div>
+      <input id="rateRange" type="range" min="10" max="60" step="5" value="30">
+
+      <div class="telemetry-grid">
+        <div class="metric"><div class="k">x (m)</div><div class="v" id="mX">—</div></div>
+        <div class="metric"><div class="k">y (m)</div><div class="v" id="mY">—</div></div>
+        <div class="metric drone-only"><div class="k">z (m)</div><div class="v" id="mZ">—</div></div>
+        <div class="metric"><div class="k">yaw (°)</div><div class="v" id="mYaw">—</div></div>
+        <div class="metric"><div class="k">speed</div><div class="v" id="mSpd">—</div></div>
+        <div class="metric"><div class="k">cmd lin</div><div class="v" id="mCmdLin">0.00</div></div>
+        <div class="metric"><div class="k">cmd ang</div><div class="v" id="mCmdAng">0.00</div></div>
+        <div class="metric drone-only"><div class="k">cmd vert</div><div class="v" id="mCmdVert">0.00</div></div>
+      </div>
+
+      <div class="log-wrap">
+        <div class="log-head">
+          <span>activity log</span>
+          <button id="btnClearLog" title="Clear log">×</button>
+        </div>
+        <div class="status" id="status">awaiting WebSocket…</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Template for one camera panel; cloned per panel at runtime -->
+<template id="camPanelTemplate">
+  <section class="panel camera-panel">
+    <div class="panel-head">
+      <div class="panel-title js-cam-label">Camera</div>
+      <div class="panel-controls">
+        <select class="js-cam-select" title="Active camera topic"></select>
+        <button class="js-cam-snap" title="Save current frame as JPEG">📸</button>
+      </div>
+    </div>
+    <div class="camera-wrap">
+      <img class="js-cam-img" alt="" />
+      <div class="nofeed js-cam-nofeed">
+        <div class="nofeed-msg">No frames on this topic yet.</div>
+        <div class="nofeed-hint js-cam-nofeed-hint"></div>
+      </div>
+      <div class="camera-overlay">
+        <span class="js-cam-topic">topic: —</span>
+        <span class="js-cam-size">—</span>
+        <span class="js-cam-fps">— fps</span>
+      </div>
+    </div>
+  </section>
+</template>
+
+<script src="/static/dashboard.js"></script>
+</body>
+</html>

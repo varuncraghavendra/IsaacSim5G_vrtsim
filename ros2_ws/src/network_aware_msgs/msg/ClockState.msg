@@ -1,0 +1,11 @@
+builtin_interfaces/Time stamp
+float32 rtf
+float32 estimated_latency_ms
+float32 estimated_jitter_ms
+float32 release_lookahead_ms
+float32 physics_step_ms
+float32 network_step_ms
+uint32 queue_depth
+bool step_gate_enabled
+bool deterministic_replay_enabled
+string broker_state

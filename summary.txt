@@ -1,0 +1,120 @@
+IsaacSim5G — running pipeline summary
+=====================================
+
+Running processes
+-----------------
+
+ #  Process                                                Where it runs        What it does
+ 1  oai-cn5g containers                                    Docker               5G core — authentication, session mgmt, GTP-U user plane.
+    (amf / smf / upf / nrf / ausf / udm / udr / mysql / ims)
+ 2  oai-ext-dn container + 2 udp_5g_forwarder.py instances Docker               "External data network." Two UDP forwarders inside the container
+                                                                                relay packets that the host sends to 192.168.70.135:16000 and
+                                                                                :17600 into the UPF, which then injects them into the radio
+                                                                                toward the UE.
+ 3  nr-softmodem (OAI gNB)                                 host                 Simulated gNB. Speaks RFsim over a TCP socket to the UE
+                                                                                (acts as the radio PHY).
+ 4  nr-uesoftmodem (OAI UE)                                host                 Simulated UE. Attaches to the gNB and creates the
+                                                                                oaitun_ue1 network interface at 10.0.0.2.
+ 5  Isaac Sim (Nova Carter scene)                          host                 Physics + rendering. Publishes /chassis/odom and camera
+                                                                                topics; subscribes /cmd_vel.
+ 6  viewport_to_udp.py (inside Isaac's Python)             host (Isaac proc)    Captures "Viewport 2" every ~125 ms, resizes to ≤960 px,
+                                                                                JPEG-encodes ≤60 KB, wraps in IST5, UDP-sends to ext-dn.
+ 7  teleop_app/app.py (FastAPI/uvicorn)                    host                 The dashboard. Serves HTML at :8080, accepts WebSocket
+                                                                                keystrokes, emits UDP commands, listens for IST5 uplink
+                                                                                frames on :17500, renders them to the browser.
+ 8  oai_bridge/ue_teleop_bridge.py                         host (default netns) UE-side endpoint. Listens on 0.0.0.0:16000 (commands arriving
+                                                                                via oaitun_ue1) and 0.0.0.0:17600 (camera frames arriving via
+                                                                                oaitun_ue1). Forwards commands to broker on 127.0.0.1:16100.
+                                                                                Subscribes /chassis/odom and bounces odom to dashboard at
+                                                                                127.0.0.1:17500.
+ 9  broker stack (network_aware_stack.launch.py)           host                 Four ROS 2 nodes:
+                                                                                  • ue_ingress_node   — decodes UDP → /network/teleop_command
+                                                                                  • network_aware_broker — paces/holds at 100 Hz with 600 ms
+                                                                                    hold, publishes /network/cmd_vel
+                                                                                  • metrics_ingress_node — idle in live mode
+                                                                                  • rtf_clock_node    — idle in live mode
+10  nova_carter_bridge.py                                  host                 /network/cmd_vel → /cmd_vel at 30 Hz with a 500 ms watchdog
+                                                                                (zero-twist if no fresh command arrives).
+
+
+What crosses the 5G radio vs. what doesn't
+------------------------------------------
+
+Stream                          Goes over the radio?   Why
+------                          --------------------   ---
+Teleop commands                 YES — crosses          app.py → UDP to 192.168.70.135:16000 (ext-dn) → forwarder → UPF
+(W/A/S/D → Twist)               RFsim AIR              (GTP-U encap on N3) → gNB → RFsim radio → UE → oaitun_ue1:16000
+                                                       → bridge.
+
+Camera frames                   YES — crosses          viewport_to_udp.py → UDP to 192.168.70.135:17600 (ext-dn) →
+(Viewport 2 → JPEG)             RFsim AIR              forwarder → UPF → gNB → RFsim radio → UE → oaitun_ue1:17600
+                                                       → bridge.
+
+Odom feedback                   NO — loopback          The bridge subscribes to the ROS topic in the same namespace as
+(/chassis/odom)                                        Isaac and sends IST5 directly to 127.0.0.1:17500. Single-host
+                                                       setup means "operator" = "UE host," so the dashboard is reachable
+                                                       via loopback and the bridge never re-enters the radio in the
+                                                       UE→gNB direction.
+
+/cmd_vel                        NO — local ROS DDS     Stays inside ROS, never touches UDP / radio after the broker
+(broker → Isaac)                                       emits it.
+
+WebSocket browser ↔ dashboard   NO — loopback HTTP     The browser hits http://localhost:8080 directly.
+
+
+A subtle point about radio direction
+------------------------------------
+
+Cellular terms have the radio's "downlink" as gNB→UE and "uplink" as UE→gNB.
+In this setup both flows (commands AND camera) cross the radio in the gNB→UE
+direction because the dashboard and Isaac both live on the operator side,
+and we use ext-dn as the data-network ingress that feeds the UPF. The
+system's "uplink" (camera feedback to dashboard) is a logical uplink in the
+teleop sense, but mechanically it still rides the cellular downlink. The
+cellular uplink direction (UE→gNB) is exercised by the radio's control-plane
+traffic and PDCCH/PUCCH grants, not by your application data, on this
+single-host topology.
+
+
+End-to-end flow
+---------------
+
+keypress ─ws─► app.py ─UDP─► ext-dn:16000 ─►UPF─►gNB ═RADIO═►UE ═►oaitun_ue1:16000
+            (browser)        (host:39261)  (GTP-U)   (RFsim AIR)         │
+                                                                         ▼
+                                                          ue_teleop_bridge.py
+                                                                         │ UDP→127.0.0.1:16100
+                                                                         ▼
+                                                          ue_ingress_node →
+                                                          /network/teleop_command →
+                                                          network_aware_broker (100 Hz, 600 ms hold) →
+                                                          /network/cmd_vel →
+                                                          nova_carter_bridge (30 Hz, 500 ms watchdog) →
+                                                          /cmd_vel → Isaac Nova Carter (robot moves)
+
+Isaac Viewport 2 ─►viewport_to_udp.py ─UDP─►ext-dn:17600 ─►UPF─►gNB═RADIO═►UE═►oaitun_ue1:17600
+                  (JPEG ≤60 KB, IST5)                              (RFsim AIR)        │
+                                                                                      ▼
+                                                                      ue_teleop_bridge.py
+                                                                                      │ UDP→127.0.0.1:17500
+                                                                                      ▼
+                                                                             app.py uplink listener
+                                                                                      │ WebSocket
+                                                                                      ▼
+                                                                             browser camera panel
+
+/chassis/odom (Isaac) ──ROS DDS──► ue_teleop_bridge (rclpy subscriber)
+                                       │  IST5 over UDP
+                                       ▼
+                                  127.0.0.1:17500 (loopback, NOT 5G)
+                                       │
+                                       ▼
+                                  app.py → WebSocket → browser HUD
+
+
+Bottom line
+-----------
+
+Commands and video are genuinely traversing the OAI RFsim radio; only the
+odom telemetry takes a loopback shortcut because the operator and the UE
+share a machine.

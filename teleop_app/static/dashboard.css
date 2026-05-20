@@ -1,0 +1,238 @@
+:root {
+  --bg: #050b14;
+  --bg-2: #081323;
+  --panel: #0b1a2b;
+  --panel-2: #0f2238;
+  --line: #1c3b5c;
+  --line-2: #244a70;
+  --text: #e6f1ff;
+  --muted: #7fc5ff;
+  --accent: #2a8be0;
+  --accent-2: #3aa6ff;
+  --warn: #ff8a78;
+  --ok: #4ad991;
+  --estop: #ff4530;
+  --shadow: 0 8px 24px rgba(0,0,0,.4);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: linear-gradient(180deg, #03070d 0%, #061222 100%);
+  color: var(--text);
+  font-family: -apple-system, system-ui, "Segoe UI", Arial, sans-serif;
+  margin: 0;
+}
+
+.app { max-width: 1480px; margin: 0 auto; padding: 18px 22px; }
+
+/* ===== Header ============================================================ */
+.top {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.title { font-size: 22px; font-weight: 600; letter-spacing: .3px; }
+.dot {
+  display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--warn); box-shadow: 0 0 8px var(--warn);
+  transition: background .2s, box-shadow .2s;
+}
+.dot.ok { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+.mode-pill {
+  padding: 3px 10px; border-radius: 999px; background: var(--panel-2);
+  color: var(--muted); font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; border: 1px solid var(--line-2);
+}
+.stats { display: flex; gap: 16px; }
+.stats .stat {
+  display: flex; flex-direction: column; align-items: flex-end;
+  font-family: ui-monospace, Menlo, monospace;
+}
+.stats .stat label {
+  font-size: 10px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .12em;
+}
+.stats .stat span { font-size: 14px; font-variant-numeric: tabular-nums; }
+
+/* ===== Layout grid ======================================================= */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 380px);
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .layout { grid-template-columns: 1fr; }
+}
+.cam-grid {
+  display: grid;
+  /* Two panels side by side. With N != 2 the auto-fit handles it. */
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 14px;
+  align-content: start;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  box-shadow: var(--shadow);
+}
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px; gap: 12px;
+}
+.panel-title { font-size: 15px; font-weight: 600; letter-spacing: .04em; }
+
+/* ===== Camera panel ====================================================== */
+.panel-controls { display: flex; gap: 8px; align-items: center; }
+.panel-controls select {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--line-2);
+  border-radius: 8px; padding: 6px 8px; font-size: 12px;
+  min-width: 320px; max-width: 520px;
+  font-family: ui-monospace, Menlo, monospace;
+}
+.panel-controls button {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--line-2);
+  border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer;
+}
+.panel-controls button:hover { background: #15355a; }
+
+.camera-wrap {
+  position: relative; background: #000; border-radius: 12px;
+  overflow: hidden; aspect-ratio: 16/9;
+  border: 1px solid var(--line-2);
+}
+.camera-wrap img { width: 100%; height: 100%; object-fit: contain; display: none; }
+.camera-wrap img.live { display: block; }
+.nofeed {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; color: var(--muted); padding: 0 24px; text-align: center;
+}
+.nofeed-msg { font-size: 16px; color: #aacdf2; }
+.nofeed-hint { font-size: 12px; color: #6da9d6; max-width: 540px; line-height: 1.5; }
+.nofeed-hint code {
+  font-family: ui-monospace, Menlo, monospace;
+  background: rgba(255,255,255,.04); padding: 1px 5px; border-radius: 4px;
+}
+.camera-overlay {
+  position: absolute; left: 10px; bottom: 10px; right: 10px;
+  display: flex; justify-content: space-between;
+  color: #cfe7ff; font-size: 11px;
+  font-family: ui-monospace, Menlo, monospace;
+  background: rgba(0,0,0,.55); padding: 4px 10px; border-radius: 6px;
+  pointer-events: none;
+}
+
+/* ===== Control panel ===================================================== */
+.kbd-hint {
+  color: var(--muted); font-size: 11px;
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+  text-align: right; max-width: 240px; line-height: 1.5;
+}
+.kbd-hint kbd {
+  display: inline-block; padding: 1px 6px; min-width: 18px; text-align: center;
+  font-family: ui-monospace, Menlo, monospace;
+  background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 4px;
+  font-size: 10.5px;
+}
+
+.estop-banner {
+  display: none; background: var(--estop); color: white;
+  border-radius: 10px; padding: 10px 12px;
+  font-weight: 600; margin-bottom: 12px; text-align: center;
+  box-shadow: 0 0 0 3px rgba(255,69,48,.22);
+}
+.estop-banner.on { display: block; }
+
+.pad-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  margin-bottom: 10px;
+}
+.pad-grid-2 { margin-top: 0; margin-bottom: 12px; }
+.pad {
+  font-size: 12px; line-height: 1.2; padding: 12px 4px;
+  border-radius: 10px; border: 1px solid var(--accent);
+  background: #0d2238; color: #fff; cursor: pointer; user-select: none;
+  font-family: ui-monospace, Menlo, monospace;
+}
+.pad:hover { background: #15355a; }
+.pad.active {
+  background: #1d5790; border-color: var(--ok);
+  box-shadow: 0 0 0 2px rgba(74,217,145,.3) inset;
+}
+.pad.stop {
+  background: #3d130f; border-color: var(--warn);
+  font-weight: 700;
+}
+.pad.stop:hover { background: #5c1a15; }
+.pad.stop.active {
+  background: #a32d24; border-color: #ff8a78;
+  box-shadow: 0 0 0 3px rgba(255,69,48,.4);
+}
+
+.event-row {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.evt {
+  padding: 8px 12px; font-size: 11.5px; border-radius: 8px;
+  border: 1px solid var(--line-2); background: var(--panel-2);
+  color: var(--text); cursor: pointer; font-family: ui-monospace, Menlo, monospace;
+  letter-spacing: .04em;
+}
+.evt:hover { background: #15355a; }
+.evt.arm     { border-color: var(--ok);    color: #d6ffe6; }
+.evt.disarm  { border-color: var(--warn);  color: #ffd6cc; }
+.evt.takeoff { border-color: var(--accent-2); color: #ddf2ff; }
+.evt.land    { border-color: #ffd055;       color: #fff0c2; }
+.evt.off     { border-color: #b07dff;       color: #e7d6ff; }
+
+.slider-row {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 10px; font-size: 12px; color: var(--muted);
+}
+.slider-row span { color: var(--text); font-variant-numeric: tabular-nums; }
+input[type="range"] { width: 100%; accent-color: var(--accent-2); }
+
+.telemetry-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+  margin-top: 14px;
+}
+.metric {
+  background: var(--panel-2); border: 1px solid var(--line-2);
+  border-radius: 8px; padding: 8px 10px;
+}
+.metric .k {
+  color: var(--muted); font-size: 10px; text-transform: uppercase;
+  letter-spacing: .1em; margin-bottom: 2px;
+}
+.metric .v { font-size: 16px; font-variant-numeric: tabular-nums; }
+
+.log-wrap { margin-top: 14px; }
+.log-head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 11px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .1em; margin-bottom: 6px;
+}
+.log-head button {
+  background: transparent; color: var(--muted); border: none;
+  cursor: pointer; font-size: 16px; padding: 0 4px;
+}
+.status {
+  background: #050d18; border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px 10px;
+  height: 130px; overflow: auto; white-space: pre-wrap;
+  font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+  color: #aac3dd;
+}
+
+/* ===== Drone-only chrome ================================================= */
+/* JS adds the .platform-ground or .platform-drone class on <body>. */
+body.platform-ground .drone-only { display: none !important; }
+body.platform-ground #dronePad { display: none; }
+body.platform-ground #droneEvents { display: none; }
+body.platform-drone #droneEvents { display: flex; }
+body.platform-drone #dronePad { display: grid; }
