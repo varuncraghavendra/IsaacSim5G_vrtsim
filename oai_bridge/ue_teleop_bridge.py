@@ -203,7 +203,16 @@ class UeBridge(Node):
         self._rx_thread.start()
 
         # --- Uplink: ROS subs -> UDP -----------------------------------
+        # IP_TOS=0x88 (DSCP_AF41) marks the pose/odom + relayed camera
+        # uplinks as interactive video so the 5G QoS rules can route them
+        # onto a non-default QoS flow (5QI 7/65) when the PDU session has
+        # DSCP→5QI rules wired up. Falls back silently on hosts where the
+        # setsockopt isn't permitted.
         self._tx_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            self._tx_sock.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 0x88)
+        except OSError:
+            pass
         self.get_logger().info(
             f"uplink target: {operator_host}:{operator_port}")
 

@@ -8,6 +8,7 @@ find_package(builtin_interfaces REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ClockState.msg"
   "msg/NetworkMetrics.msg"
+  "msg/PlotterSample.msg"
   "msg/RobotTelemetry.msg"
   "msg/TeleopCommand.msg"
   DEPENDENCIES builtin_interfaces

@@ -1,10 +1,232 @@
-# IsaacSim5G
+# IsaacSim5G (vrtsim drone teleop)
 
-Browser-based teleoperation dashboard for an Isaac Sim Nova Carter robot
-where the teleop commands ride through a real OpenAirInterface 5G data
-plane (gNB ↔ UE over RFsim) before reaching Isaac. Includes a built code
-path for the Iris quadcopter (PX4 offboard) and a simulated-network
-fallback when you don't want OAI in the loop.
+Browser-based teleoperation for an Isaac Sim **Iris quadcopter** in the
+NVIDIA City demo scene, where every byte the operator sends to the drone
+— commands DL, FPV camera UL, and pose telemetry UL — actually crosses
+an OpenAirInterface 5G air interface (rfsim or vrtsim). If OAI isn't in
+the loop, the drone is silent. If the UE TUN isn't up, the launcher
+refuses to start. No localhost MAVLink fallback exists anywhere.
+
+The original Nova Carter pipeline is still here for reference (see the
+"Nova Carter" sections further down) — the drone path is purpose-built
+on top of the same URLLC/netns plumbing.
+
+## TL;DR — drone, OAI-only, no Isaac scripts
+
+```
+Browser  ── WebSocket joystick ──►  teleop_app/drone_app.py  (:8080)
+                                      │  UDP JSON
+                                      ▼
+                            EXT_DN_IP:16000 (oai-ext-dn)
+                                      │
+                                      ▼
+                            UPF → gNB → AIR (rfsim/vrtsim)
+                                      │
+                                      ▼
+                            UE → oaitun_ue1   (inside robot-ns)
+                                      │
+                                      ▼
+                            robot_netns_proxy ─veth─►
+                            oai_bridge/drone_ue_bridge.py
+                                      │  MAVLink MANUAL_CONTROL
+                                      ▼
+                            PX4 SITL (Pegasus auto-launch in Isaac)
+                                      │
+                                      ▼
+                            Iris in city  ◄── camera + pose UL ──►
+                                                                    │
+   isaac/viewport_screen_capture.py (host-side mss, no Isaac script)│
+   PX4 LOCAL_POSITION_NED + ATTITUDE                                │
+                                                                    │
+                              ── IST5 envelopes ── via OAI UL ──────┘
+                                                                    │
+                                                                    ▼
+                              teleop_app/drone_app.py UL listener (:17500)
+                                       │
+                                       ├─► browser camera + HUD via WebSocket
+                                       └─► ZMQ PUB tcp://127.0.0.1:5556
+                                            (MSG_FORMAT for live_plot_position.py
+                                             / main_paths_los_model_*.py — same wire
+                                              format the channel bridge already speaks)
+```
+
+In Isaac you do exactly one thing: **add a second viewport** that frames
+the FPV camera. No Script Editor, no OmniGraph, no extension changes.
+
+## Components added in this rewrite
+
+| File | Role |
+|------|------|
+| `teleop_app/drone_app.py` | Operator dashboard. Twin virtual-joystick UI. Sends DL JSON to ext-dn only. Listens UL on UDP 17500. Republishes pose as `MSG_FORMAT` on `tcp://5556`. No pymavlink. |
+| `teleop_app/static/drone.{html,js,css}` | Twin-stick browser UI + camera panel + telemetry HUD. |
+| `oai_bridge/drone_ue_bridge.py` | UE-side bridge in the default ns. Listens on the veth for DL after the radio; translates JSON to MAVLink for PX4 (`udpin:127.0.0.1:14540`). Reads PX4 NED pose, converts to ENU, ships IST5 pose envelopes via the robot-ns proxy. |
+| `isaac/viewport_screen_capture.py` | Host-side X11/mss capture of the Isaac second viewport. xdotool window auto-detect or explicit `CAPTURE_REGION`. JPEG+IST5 over UDP to the robot-ns ingress so the camera also rides OAI UL. |
+| `scripts/run_drone_oai.sh` | End-to-end launcher. Brings up ext-dn forwarders, robot-ns + veth, proxy, bridge, dashboard, capture. Refuses to start when `oaitun_ue1` is missing. |
+| `sim_isaac_trajectory.py` (modified) | Adds `--trajectory isaac` mode that proxies pose from the (optional) Isaac sidecar into `MSG_FORMAT`. Synthetic trajectories untouched. |
+| `isaac/drone_telemetry.py` | OPTIONAL Isaac Script Editor sidecar (merged viewport + ZMQ pose). Kept for environments where the Script Editor is available. The OAI-gated path above does NOT require it. |
+
+## Prereqs you bring up before launching the demo
+
+1. **5G core** (`docker compose -f /path/to/oai-cn5g/docker-compose.yaml up -d`).
+2. **OAI gNB** in rfsim or vrtsim mode:
+   ```bash
+   sudo ./nr-softmodem \
+       -O /path/to/gnb.conf \
+       --gNBs.[0].min_rxtxtime 6 \
+       --rfsim --rfsimulator.[0].serveraddr server
+   ```
+   (For vrtsim, use `gnb_v.conf` + the `time_bridge` companions; the
+   data-plane path the dashboard sees is unchanged.)
+3. **OAI UE** — this is what creates `oaitun_ue1`:
+   ```bash
+   sudo ./nr-uesoftmodem -r 106 --numerology 1 --band 78 -C 3619200000 \
+       --ssb 516 --rfsim -O /path/to/ue.conf
+   ```
+4. **Isaac Sim** with the Pegasus Drone Simulator Extension running
+   `city_drone_fpv.py` (or any scene that spawns Iris + PX4 SITL).
+   In Isaac, add a second viewport showing the FPV camera.
+
+## Launching the drone pipeline
+
+```bash
+# one-time: build the dashboard venv
+python3 -m venv teleop_app/.venv
+teleop_app/.venv/bin/pip install -r teleop_app/requirements.txt
+
+# on every run, after the four prereqs above are up
+sudo -E TELEOP_PORT=8080 bash scripts/run_drone_oai.sh
+# open http://localhost:8080
+```
+
+Logs land in `.run_logs/{drone_app,drone_ue_bridge,robot_netns_proxy,viewport_capture}.log`.
+Ctrl-C the launcher to tear everything down (ext-dn forwarders + netns + bridge + dashboard + capture).
+
+## Safety guarantee
+
+Three things make "no OAI = no drone response" mechanical, not a policy:
+
+1. `drone_app.py` only ever sends DL bytes to `EXT_DN_IP:EXT_DN_PORT`.
+   There is no code path that talks to `127.0.0.1:14*` directly.
+2. `drone_ue_bridge.py` only listens on the veth address that the
+   robot-ns proxy uses. With no UE TUN there's no proxy egress, so the
+   bridge never receives anything, so PX4 never receives a
+   `MANUAL_CONTROL`.
+3. `run_drone_oai.sh` refuses to start if `oaitun_ue1` is missing in
+   default ns *and* in `robot-ns`.
+
+You can verify (with OAI down) by hitting `http://localhost:8080/healthz`
+while jiggling the joystick: `downlink_sent` will tick up but
+`poses_rx` / `frames_rx` stay at zero — the dashboard is alive, the
+drone is silent, exactly as required.
+
+---
+
+## Original Nova Carter pipeline (kept for reference)
+
+> **For the architecturally-correct setup (real PUSCH UL + URLLC QoS +
+> `/plotter`)**, see `docs/URLLC_AND_UL_PATH.md` and use
+> `scripts/run_oai_teleop_urllc.sh`. Earlier modes (`oai-real`,
+> `oai-real + chain + ext-dn`) only exercise the DL direction of the
+> radio — the camera "uplink" path on those modes is physically PDSCH
+> looped back through the UE TUN, not true PUSCH. The URLLC mode fixes
+> that with a robot-side netns.
+
+## Drone demo — fly the Iris in `city_drone_fpv.py` from the browser
+
+If your starting point is the city + Iris quadcopter scene (the one
+launched by `city_drone_fpv.py`), the channel pipeline now sources its
+"ground truth" from the real drone instead of `sim_isaac_trajectory.py`'s
+synthetic patterns. You fly with a virtual joystick in the browser;
+pose feedback (x, y, z, vx, vy, vz, heading) is read out of Isaac and
+re-published in the existing `MSG_FORMAT` so the OAI L1 / channel /
+plotter stack runs unchanged.
+
+```
+Browser (twin virtual joystick + FPV)
+  │  WebSocket joystick state @ 30 Hz
+  ▼
+teleop_app/drone_app.py
+  │  MAVLink MANUAL_CONTROL @ 50 Hz (pymavlink)
+  ▼
+PX4 SITL (auto-launched by Pegasus inside Isaac)
+  ▼
+Iris quad in city_drone_fpv scene
+
+isaac/drone_telemetry.py  (in Isaac's Script Editor)
+  │  ZMQ PUB  tcp://127.0.0.1:5570  (raw pose JSON @ ~100 Hz)
+  ▼
+sim_isaac_trajectory.py --trajectory isaac
+  │  ZMQ PUB  tcp://127.0.0.1:5556  (MSG_FORMAT "<ddddddddd">)
+  ▼
+main_paths_los_model_measurment_position.py
+  ▼
+OAI gNB / sim_l1.py  →  live_plot_position.py
+
+isaac/drone_telemetry.py also captures the FPV viewport and ships it
+as IST5 UDP datagrams to the dashboard (default 127.0.0.1:17500). The
+dashboard listens, decodes, and forwards each JPEG to the browser via
+the same WebSocket — same wire path the Nova Carter dashboard already
+uses, no extra plumbing.
+```
+
+Run order (after Isaac is already playing the city scene):
+
+```bash
+cd "$REPO/IsaacSim5G-master"
+
+# A. Make sure pymavlink + pyzmq are in the dashboard venv (one-time).
+teleop_app/.venv/bin/pip install -r teleop_app/requirements.txt
+
+# B. Dashboard + Isaac→channel-bridge pose proxy.
+bash scripts/run_drone_demo.sh
+#  logs land in .run_logs/{drone_app,isaac_pose_proxy}.log
+#  open http://localhost:8080 in your browser
+
+# C. Inside Isaac, Window → Script Editor → File → Open
+#         isaac/drone_telemetry.py
+#    Ctrl-Enter to start the viewport-capture + pose-publisher loop.
+
+# D. Channel pipeline (each in its own terminal — same as the existing
+#     /tmp/ground_truth.csv flow used by live_plot_position.py):
+python main_paths_los_model_measurment_position.py --gnb-x 0 --gnb-y 0 --gnb-z 3
+python ../oai_rfsim_rtf/fixed_rtf_rfsim-develop/time_bridge/live_plot_position.py \
+    --gnb-x 0 --gnb-y 0
+# plus your OAI gNB/UE (or sim_l1.py if you don't want the radio in this run)
+```
+
+To stop the dashboard + proxy, Ctrl-C the `run_drone_demo.sh` terminal.
+In Isaac's Script Editor, call `STOP_DRONE_TELEMETRY()` to halt the
+capture + pose loops.
+
+UI quick reference (browser keyboard maps to the joystick buttons too):
+
+| Control | Action |
+|---------|--------|
+| Left stick (vertical) | throttle (down = idle, up = full) |
+| Left stick (horizontal) | yaw |
+| Right stick (vertical) | pitch (forward / back) |
+| Right stick (horizontal) | roll |
+| Space | E-stop (zero sticks while held) |
+| Z / X | ARM / DISARM |
+| T / L | TAKEOFF / LAND |
+| ARM/DISARM/TAKEOFF/LAND/POSCTL/ALTCTL/STAB/OFFBOARD | clickable buttons |
+
+Each MANUAL_CONTROL goes to PX4 SITL at 50 Hz. If you want to keep
+QGroundControl connected on UDP 14550 at the same time, leave the
+default MAVLink URL alone — the dashboard binds the *companion* port
+14540 and PX4 multiplexes both endpoints.
+
+To skip the proxy and have `drone_telemetry.py` publish `MSG_FORMAT`
+directly on `tcp://127.0.0.1:5556`, set in the env that launches Isaac:
+
+```bash
+export ISAAC_POSE_DIRECT_ADDR=tcp://127.0.0.1:5556
+```
+
+In that mode you don't run `sim_isaac_trajectory.py` at all — Isaac
+publishes the channel-bridge stream itself.
+
+---
 
 ## Quickstart (fresh clone → driving in the browser)
 
@@ -732,6 +954,7 @@ If `pose=0`, the bridge isn't seeing Isaac's odom — check
 | `oai-real` | UDP → UE TUN (loopback in single-host RFsim, NOT actual radio) → `/cmd_vel` | `scripts/run_oai_teleop.sh` | Isaac + OAI gNB + UE + 5G core |
 | `oai-real` + chain | radio-bypassed (same caveat) → bridge **forwards** UDP → broker → `nova_carter_bridge` → `/cmd_vel` | `scripts/run_oai_teleop_broker.sh` | Isaac + OAI gNB + UE + 5G core + broker stack |
 | **`oai-real` + chain + ext-dn (recommended)** | UDP → **ext-dn → UPF → gNB → rfsim AIR → UE** → bridge → broker → `/cmd_vel`; Isaac viewport → ext-dn → radio → UE → bridge → dashboard | `scripts/setup_5g_data_plane.sh` + `scripts/run_oai_teleop_broker.sh` + `isaac/viewport_to_udp.py` | Isaac + OAI gNB + UE + 5G core + broker + ext-dn forwarder + Isaac viewport capture |
+| **`oai-urllc` (theoretically-correct UL + URLLC QoS)** | Commands: same as above (PDSCH via ext-dn). **Camera + pose UL: Isaac → robot-ns proxy → oaitun_ue1 → PUSCH → gNB → UPF → operator** (the real UL, not loopback). All flows DSCP-marked for 5QI mapping. New `/plotter` topic emits `sim_time, rtf, x/y/z, vx/vy/vz, heading`. | `scripts/run_oai_teleop_urllc.sh` (calls `setup_5g_data_plane.sh` + `setup_robot_netns.sh` internally) | Same as above + root for netns + `isaac/plotter_publisher.py` |
 
 Both broker-using modes (`oai` and the chain) launch the `ros2_ws`
 broker stack via:

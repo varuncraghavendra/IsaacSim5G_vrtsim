@@ -271,9 +271,16 @@ class TeleopNode(Node):
         self._cmd_seq = 0
 
         # UDP socket used by oai + oai-real to send downlink commands.
+        # IP_TOS=0xb8 (DSCP_EF) marks every command datagram as Expedited
+        # Forwarding so any midbox (and a properly-configured 5G QoS
+        # rule mapping DSCP→5QI) can prioritise it as URLLC traffic.
         self._udp_sock: Optional[socket.socket] = None
         if cfg.mode in ("oai", "oai-real"):
             self._udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                self._udp_sock.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 0xb8)
+            except OSError:
+                pass
 
         # In oai-real mode, also open a UDP listener for the UE-side uplink
         # (camera + odom envelopes from oai_bridge/ue_teleop_bridge.py).

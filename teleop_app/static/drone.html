@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>IsaacSim5G Drone Teleop</title>
+  <link rel="stylesheet" href="/static/drone.css">
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <span class="dot" id="connDot"></span>
+      <span class="title">IsaacSim5G — Iris Drone</span>
+      <span class="pill" id="modePill">mode: —</span>
+      <span class="pill" id="armedPill">disarmed</span>
+    </div>
+    <div class="stats">
+      <span class="stat"><label>tx</label><span id="sTx">— Hz</span></span>
+      <span class="stat"><label>rx</label><span id="sRx">— Hz</span></span>
+      <span class="stat"><label>fps</label><span id="sFps">—</span></span>
+      <span class="stat"><label>mavlink</label><span id="sMav">disconnected</span></span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- =================== FPV camera =================== -->
+    <section class="cam-panel">
+      <div class="cam-head">
+        <span class="cam-title">FPV — Isaac Viewport</span>
+        <span class="cam-overlay">
+          <span id="camTopic">topic: —</span>
+          <span id="camSize">—</span>
+          <span id="camFps">— fps</span>
+        </span>
+      </div>
+      <div class="cam-wrap">
+        <img id="camImg" alt="FPV stream"/>
+        <div class="nofeed" id="nofeed">
+          Waiting for frames…<br>
+          <small>Run <code>isaac/drone_telemetry.py</code> in Isaac's Script Editor.</small>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================== Controls =================== -->
+    <section class="ctrl-panel">
+      <div class="ctrl-head">
+        <span class="ctrl-title">Fly</span>
+        <span class="hint">Left stick: throttle (up/down) + yaw (left/right) · Right stick: pitch (up/down) + roll (left/right) · SPACE = E-stop</span>
+      </div>
+
+      <div class="estop-banner" id="estopBanner">E-STOP ENGAGED — release SPACE to resume</div>
+
+      <div class="event-row">
+        <button class="evt arm"     data-evt="arm">ARM</button>
+        <button class="evt disarm"  data-evt="disarm">DISARM</button>
+        <button class="evt takeoff" data-evt="takeoff">TAKEOFF</button>
+        <button class="evt land"    data-evt="land">LAND</button>
+        <button class="evt mode"    data-evt="posctl">POSCTL</button>
+        <button class="evt mode"    data-evt="altctl">ALTCTL</button>
+        <button class="evt mode"    data-evt="stabilized">STAB</button>
+        <button class="evt off"     data-evt="offboard">OFFBOARD</button>
+      </div>
+
+      <div class="sticks">
+        <div class="stick-wrap">
+          <div class="stick-label">Throttle / Yaw</div>
+          <div class="stick" id="leftStick" data-mode="throttle">
+            <div class="stick-thumb"></div>
+            <div class="axis-h"></div><div class="axis-v"></div>
+          </div>
+          <div class="stick-val" id="leftVal">y 0.00 · r 0.00</div>
+        </div>
+        <div class="stick-wrap">
+          <div class="stick-label">Pitch / Roll</div>
+          <div class="stick" id="rightStick" data-mode="pitchroll">
+            <div class="stick-thumb"></div>
+            <div class="axis-h"></div><div class="axis-v"></div>
+          </div>
+          <div class="stick-val" id="rightVal">p 0.00 · r 0.00</div>
+        </div>
+      </div>
+
+      <div class="telemetry-grid">
+        <div class="metric"><div class="k">x (m)</div><div class="v" id="mX">—</div></div>
+        <div class="metric"><div class="k">y (m)</div><div class="v" id="mY">—</div></div>
+        <div class="metric"><div class="k">z (m)</div><div class="v" id="mZ">—</div></div>
+        <div class="metric"><div class="k">heading (°)</div><div class="v" id="mYaw">—</div></div>
+        <div class="metric"><div class="k">speed (m/s)</div><div class="v" id="mSpd">—</div></div>
+        <div class="metric"><div class="k">rtf</div><div class="v" id="mRtf">—</div></div>
+        <div class="metric"><div class="k">throttle</div><div class="v" id="mThr">0.50</div></div>
+        <div class="metric"><div class="k">yaw cmd</div><div class="v" id="mYawCmd">0.00</div></div>
+      </div>
+
+      <div class="log-wrap">
+        <div class="log-head">
+          <span>activity log</span>
+          <button id="btnClearLog" title="Clear log">×</button>
+        </div>
+        <div class="status" id="status">awaiting WebSocket…</div>
+      </div>
+    </section>
+  </main>
+</div>
+<script src="/static/drone.js"></script>
+</body>
+</html>

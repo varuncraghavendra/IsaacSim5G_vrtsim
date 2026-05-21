@@ -27,9 +27,15 @@
 import os, io, time, json, struct, socket, threading, traceback
 
 # ---- Config ----------------------------------------------------------------
+# TARGET_HOST is read from env when present so the same script can target
+# either the legacy ext-dn ingress (192.168.70.135 — the "loopback DL"
+# camera path) or the new robot-ns proxy that traverses the real 5G UL
+# (default 192.168.244.2, the robot-ns side of the veth created by
+# scripts/setup_robot_netns.sh). Set ISAAC_UPLINK_HOST in the env that
+# launches Isaac to flip between them.
 TARGET_VIEWPORT_NAME = "Viewport 2"    # falls back to active viewport if missing
-TARGET_HOST          = "192.168.70.135"  # oai-ext-dn (ingress for 5G uplink)
-TARGET_PORT          = 17600
+TARGET_HOST          = os.environ.get("ISAAC_UPLINK_HOST", "192.168.244.2")
+TARGET_PORT          = int(os.environ.get("ISAAC_UPLINK_PORT", "17600"))
 TOPIC                = "/isaac/viewport2"
 FPS                  = 8                # be conservative: capture is heavyish
 JPEG_QUALITY         = 60
@@ -38,6 +44,10 @@ MAX_FRAME_DIM        = 960              # downscale longest side; keeps body wel
 MAX_UDP_PAYLOAD      = 60000            # guard against >64K UDP "Message too long" (Errno 90)
 FILE_READY_TIMEOUT   = 0.5              # max seconds to wait for capture_viewport_to_file output
 FILE_READY_POLL      = 0.015
+# DSCP_AF41 = 0x88; marks the camera UL flow as interactive video so a
+# downstream 5G QoS rule mapping DSCP→5QI can place it on the right
+# QoS flow (5QI-7/65, AF interactive video).
+DSCP_AF41            = 0x88
 # ---------------------------------------------------------------------------
 
 # IST5 wire format (mirrors oai_bridge/protocol.py / ue_teleop_bridge.py).
@@ -138,6 +148,10 @@ class _CaptureLoop:
         self._stop = threading.Event()
         self._thread = None
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            self._sock.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, DSCP_AF41)
+        except OSError:
+            pass
         self._vp = None
         self.frames_sent = 0
         self.errors = 0
